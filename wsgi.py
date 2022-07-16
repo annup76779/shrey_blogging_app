@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from datetime import datetime
@@ -7,6 +7,7 @@ from flask_jwt_extended import create_access_token
 from flask_jwt_extended import jwt_required
 
 from sqlalchemy.exc import IntegrityError
+from passlib.hash import sha256_crypt
 
 app = Flask(__name__)
 # initiating SQLAlchemy
@@ -28,6 +29,11 @@ class User(db.Model):
     password = db.Column(db.String(22), nullable=False)
     reg_date_time = db.Column(db.DateTime, nullable=False)
 
+    def set_password(self, password):
+        self.password = sha256_crypt.hash(password)
+
+    def verify_password(self, password):
+        return sha256_crypt.verify(password, self.password)
 
 
 # Register a callback function that takes whatever object is passed in as the
@@ -64,7 +70,8 @@ def register():
         email = request.form.get("email")
         password = request.form.get("password")
 
-        new_user = User(email = email, password = password, reg_date_time  = datetime.now())
+        new_user = User(email = email, reg_date_time  = datetime.now())
+        new_user.set_password(password) # setting the password with hash
 
         # adding to the session
         db.session.add(new_user)
@@ -85,7 +92,7 @@ def login():
         # "SELECT * FROM user_detail WHERE email=%s"(user_email)
         expected_user = User.query.filter_by(email = user_email).one_or_none()
         if expected_user is not None:
-            if expected_user.password == user_password:
+            if expected_user.verify_password(user_password):
                 access_token = create_access_token(identity = expected_user)
                 return jsonify(status = True, msg="logged in", access_token = access_token)
         return jsonify(status = False, msg="User Id or Password didn't matched.")
@@ -93,8 +100,9 @@ def login():
         return jsonify(status=False, msg="Something went worng")
 
 
+@app.route("/index")
+def index_page():
+    return render_template("index.html")
 
-@app.route("/dummy")
-@jwt_required()
-def dummy():
-    return jsonify(status=True)
+
+@app.route("/")
